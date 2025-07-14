@@ -28,7 +28,7 @@ export default function Login() {
     e.preventDefault();
     setError("");
     try {
-      const res = await axios.post("/token", new URLSearchParams({ username, password }), {
+      const res = await axios.post("/api/token", new URLSearchParams({ username, password }), {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
       localStorage.setItem("token", res.data.access_token);

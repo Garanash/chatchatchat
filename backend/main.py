@@ -1,10 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Body, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import uvicorn
@@ -12,15 +12,21 @@ import json
 import subprocess
 import sys
 import os
+from datetime import datetime
+import requests
+import logging
 
 # Конфиг
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
-DATABASE_URL = "sqlite:///./testchat.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./testchat.db")
+
+VSEGPT_API_URL = "https://api.vsegpt.ru/v1/chat/completions"
+VSEGPT_API_KEY = os.getenv("VSEGPT_API_KEY", "sk-...your-key-here...")
 
 # БД
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -30,6 +36,21 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     api_keys = Column(String, default="")  # Сохраняем как строку (JSON или CSV)
+
+class Dialog(Base):
+    __tablename__ = "dialogs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    title = Column(String, default="Новый диалог")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(Integer, primary_key=True, index=True)
+    dialog_id = Column(Integer, ForeignKey("dialogs.id"))
+    role = Column(String)  # "user" или "assistant"
+    content = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 
 Base.metadata.create_all(bind=engine)
 
@@ -98,6 +119,174 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+# Добавим список vision/генеративных моделей (id из modelsList.js)
+VISION_MODELS = {
+    'openai/dall-e-3',
+    'img-stable/stable-diffusion-xl-1024',
+    'vis-anthropic/claude-3-haiku',
+    # Можно добавить другие vision/генераторы по мере необходимости
+}
+
+# --- Типы моделей и endpoint ---
+MODEL_ENDPOINTS = {
+    'vision': {
+        'ids': {
+            'openai/dall-e-3',
+            'img-stable/stable-diffusion-xl-1024',
+            'vis-anthropic/claude-3-haiku',
+        },
+        'endpoint': 'https://api.vsegpt.ru/v1/images/generations',
+    },
+    'file': {
+        'ids': set(),  # Добавьте id file-моделей, если появятся
+        'endpoint': 'https://api.vsegpt.ru/v1/files/ocr',
+    },
+    'audio': {
+        'ids': set(),  # Добавьте id audio-моделей, если появятся
+        'endpoint': 'https://api.vsegpt.ru/v1/audio/transcriptions',
+    },
+    'llm': {
+        'ids': set(),  # Все остальные
+        'endpoint': 'https://api.vsegpt.ru/v1/chat/completions',
+    },
+}
+
+def get_model_type(model_id):
+    for t, v in MODEL_ENDPOINTS.items():
+        if model_id in v['ids']:
+            return t
+    return 'llm'
+
+def call_vsegpt(model, messages, settings, attached_file=None):
+    model_type = get_model_type(model)
+    headers = {
+        "Authorization": f"Bearer {VSEGPT_API_KEY}",
+    }
+    logging.info(f"[call_vsegpt] model: {model}, model_type: {model_type}")
+    if model_type == 'vision':
+        api_url = MODEL_ENDPOINTS['vision']['endpoint']
+        prompt = messages[-1]["content"] if messages else ""
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "n": 1,
+            "size": settings.get("size", "1024x1024"),
+            "response_format": "url",  # Явно указываем формат ответа
+        }
+        logging.info(f"[call_vsegpt] POST {api_url} payload={payload}")
+        files = None
+        if attached_file:
+            files = {"file": attached_file}
+        try:
+            if files:
+                response = requests.post(api_url, headers=headers, data=payload, files=files, timeout=60)
+            else:
+                headers["Content-Type"] = "application/json"
+                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+            logging.info(f"[call_vsegpt] response.status={response.status_code} response.text={response.text[:500]}")
+            response.raise_for_status()
+            return response.json(), None
+        except requests.HTTPError as e:
+            try:
+                err_json = response.json()
+                if 'error' in err_json and 'message' in err_json['error']:
+                    return None, err_json['error']['message']
+            except Exception:
+                pass
+            return None, str(e)
+        except Exception as e:
+            return None, str(e)
+    elif model_type == 'file':
+        api_url = MODEL_ENDPOINTS['file']['endpoint']
+        # Для file-моделей нужен файл и, возможно, prompt
+        prompt = messages[-1]["content"] if messages else ""
+        payload = {
+            "model": model,
+            "prompt": prompt,
+        }
+        files = None
+        if attached_file:
+            files = {"file": attached_file}
+        else:
+            return None, "Для данной модели требуется файл."
+        try:
+            response = requests.post(api_url, headers=headers, data=payload, files=files, timeout=60)
+            response.raise_for_status()
+            return response.json(), None
+        except requests.HTTPError as e:
+            try:
+                err_json = response.json()
+                if 'error' in err_json and 'message' in err_json['error']:
+                    return None, err_json['error']['message']
+            except Exception:
+                pass
+            return None, str(e)
+        except Exception as e:
+            return None, str(e)
+    elif model_type == 'audio':
+        api_url = MODEL_ENDPOINTS['audio']['endpoint']
+        files = None
+        if attached_file:
+            files = {"file": attached_file}
+        else:
+            return None, "Для данной модели требуется аудиофайл."
+        try:
+            response = requests.post(api_url, headers=headers, files=files, timeout=60)
+            response.raise_for_status()
+            return response.json(), None
+        except requests.HTTPError as e:
+            try:
+                err_json = response.json()
+                if 'error' in err_json and 'message' in err_json['error']:
+                    return None, err_json['error']['message']
+            except Exception:
+                pass
+            return None, str(e)
+        except Exception as e:
+            return None, str(e)
+    else:  # llm
+        api_url = MODEL_ENDPOINTS['llm']['endpoint']
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": settings.get("temperature", 0.7),
+            "top_p": settings.get("topP", 0.9),
+            "max_tokens": settings.get("maxTokens", 1000),
+            "frequency_penalty": settings.get("frequencyPenalty", 0.0),
+            "presence_penalty": settings.get("presencePenalty", 0.0)
+        }
+        files = None
+        if attached_file:
+            files = {"file": attached_file}
+        try:
+            if files:
+                response = requests.post(api_url, headers=headers, data=payload, files=files, timeout=60)
+            else:
+                headers["Content-Type"] = "application/json"
+                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            return response.json(), None
+        except requests.HTTPError as e:
+            try:
+                err_json = response.json()
+                if 'error' in err_json and 'message' in err_json['error']:
+                    return None, err_json['error']['message']
+            except Exception:
+                pass
+            return None, str(e)
+        except Exception as e:
+            return None, str(e)
+
+# --- summary для диалога ---
+def get_dialog_summary(messages, max_len=500):
+    # Простое summary: первые 2 сообщения пользователя и ассистента, либо первые max_len символов
+    summary = []
+    for m in messages:
+        summary.append(f"{m.role}: {m.content}")
+        if len(' '.join(summary)) > max_len:
+            break
+    return '\n'.join(summary)[:max_len]
+
 # FastAPI
 app = FastAPI()
 
@@ -150,19 +339,76 @@ def get_models(current_user: User = Depends(get_current_user)):
     # Здесь можно вернуть список моделей (заглушка)
     return {"models": [f"LLM_{i+1}" for i in range(16)]}
 
-@app.post("/chat/{model_name}")
-def chat_with_model(model_name: str, chat_data: ChatMessage, current_user: User = Depends(get_current_user)):
-    # Здесь будет логика общения с выбранной LLM (заглушка)
-    # В реальном приложении здесь будет интеграция с API моделей
-    settings = chat_data.settings or {}
-    temperature = settings.get("temperature", 0.7)
-    top_p = settings.get("topP", 0.9)
-    max_tokens = settings.get("maxTokens", 1000)
-    
-    # Имитация ответа с учетом настроек
-    response_text = f"Ответ от {model_name} на '{chat_data.message}' (temp: {temperature}, top_p: {top_p}, max_tokens: {max_tokens})"
-    
-    return {"model": model_name, "response": response_text, "settings_used": settings}
+@app.post("/chat/{model_name:path}")
+def chat_with_model(model_name: str, chat_data: ChatMessage = Body(...), current_user: User = Depends(get_current_user)):
+    logging.info(f"[chat_with_model] model_name: {model_name}")
+    db = SessionLocal()
+    # 1. Найти или создать диалог для пользователя (по id или создаём новый)
+    dialog = db.query(Dialog).filter_by(user_id=current_user.id).order_by(Dialog.created_at.desc()).first()
+    if not dialog:
+        dialog = Dialog(user_id=current_user.id)
+        db.add(dialog)
+        db.commit()
+        db.refresh(dialog)
+    # 2. Сохранить сообщение пользователя
+    user_msg = Message(dialog_id=dialog.id, role="user", content=chat_data.message)
+    db.add(user_msg)
+    db.commit()
+    # 3. Собрать историю сообщений для передачи в VseGPT
+    messages = db.query(Message).filter_by(dialog_id=dialog.id).order_by(Message.timestamp).all()
+    # --- summary для нового диалога ---
+    summary = get_dialog_summary(messages)
+    # 4. Вызвать VseGPT API
+    assistant_content = ""
+    error_msg = None
+    try:
+        # Для LLM подставляем summary в начало истории
+        model_type = get_model_type(model_name)
+        messages_payload = [{"role": "system", "content": summary}] if model_type == 'llm' and summary else []
+        messages_payload += [{"role": m.role, "content": m.content} for m in messages]
+        vsegpt_response, error_msg = call_vsegpt(model_name, messages_payload, chat_data.settings)
+        if vsegpt_response:
+            if model_type == 'vision':
+                # Для vision моделей возвращаем ссылку на изображение
+                assistant_content = vsegpt_response.get("data", [{}])[0].get("url", "[Нет изображения]")
+            elif model_type == 'file':
+                assistant_content = vsegpt_response.get("text", "[Нет текста]")
+            elif model_type == 'audio':
+                assistant_content = vsegpt_response.get("text", "[Нет текста]")
+            else:
+                assistant_content = vsegpt_response["choices"][0]["message"]["content"]
+        else:
+            if error_msg and ("image" in error_msg or "file" in error_msg):
+                assistant_content = "Данная модель не поддерживает работу с изображениями или файлами. Пожалуйста, выберите другую модель или отправьте текстовое сообщение."
+            else:
+                assistant_content = f"Ошибка обращения к VseGPT: {error_msg}"
+    except Exception as e:
+        assistant_content = f"Ошибка обращения к VseGPT: {e}"
+    # 5. Сохранить ответ ассистента
+    assistant_msg = Message(dialog_id=dialog.id, role="assistant", content=assistant_content)
+    db.add(assistant_msg)
+    db.commit()
+    return {
+        "model": model_name,
+        "response": assistant_content,
+        "settings_used": chat_data.settings,
+        "dialog_id": dialog.id
+    }
+
+@app.get("/dialogs")
+def get_dialogs(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    dialogs = db.query(Dialog).filter_by(user_id=current_user.id).all()
+    return [{"id": d.id, "title": d.title, "created_at": d.created_at} for d in dialogs]
+
+@app.get("/dialogs/{dialog_id}/messages")
+def get_dialog_messages(dialog_id: int, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    dialog = db.query(Dialog).filter_by(id=dialog_id, user_id=current_user.id).first()
+    if not dialog:
+        raise HTTPException(404, "Диалог не найден")
+    messages = db.query(Message).filter_by(dialog_id=dialog.id).order_by(Message.timestamp).all()
+    return [{"role": m.role, "content": m.content, "timestamp": m.timestamp} for m in messages]
 
 @app.post("/api/apply-backend-fixes")
 def apply_backend_fixes(fixes_data: BackendFixes, current_user: User = Depends(get_current_user)):
@@ -206,6 +452,32 @@ def apply_backend_fixes(fixes_data: BackendFixes, current_user: User = Depends(g
             "success": False, 
             "error": str(e)
         }
+
+# --- API для сохранения диалога и сообщений ---
+@app.post("/api/save-dialog")
+def save_dialog(data: dict = Body(...), current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    dialog_id = data.get("dialogId")
+    model = data.get("model")
+    title = data.get("title")
+    messages = data.get("messages", [])
+    # Найти или создать диалог
+    dialog = db.query(Dialog).filter_by(id=dialog_id, user_id=current_user.id).first()
+    if not dialog:
+        dialog = Dialog(id=dialog_id, user_id=current_user.id, title=title or "Диалог", )
+        db.add(dialog)
+        db.commit()
+        db.refresh(dialog)
+    else:
+        if title:
+            dialog.title = title
+        db.commit()
+    # Сохраняем сообщения (удаляем старые, если есть)
+    db.query(Message).filter_by(dialog_id=dialog.id).delete()
+    for m in messages:
+        db.add(Message(dialog_id=dialog.id, role=m.get("role"), content=m.get("content"), timestamp=m.get("timestamp")))
+    db.commit()
+    return {"success": True, "dialog_id": dialog.id}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 

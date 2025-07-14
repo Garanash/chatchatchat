@@ -43,7 +43,7 @@ import axios from "../axiosConfig";
 import NavBar from "../components/NavBar";
 import ReactMarkdown from 'react-markdown';
 import { v4 as uuidv4 } from 'uuid';
-import { allModels, modelIdMap } from './models';
+import { modelsList } from './modelsList';
 
 export default function Chat() {
   const { model } = useParams();
@@ -150,12 +150,13 @@ export default function Chat() {
     const newConversation = {
       id: newId,
       title: `Новый диалог ${conversations.length + 1}`,
-      model: model,
+      model: model, // сохраняем model из URL
       messages: []
     };
     setConversations(prev => [...prev, newConversation]);
     setCurrentConversationId(newId);
     setMessages([]);
+    setSelectedModelId(model); // явно выставляем выбранную модель
   };
 
   const selectConversation = (conversationId) => {
@@ -237,124 +238,26 @@ export default function Chat() {
 
   // Получить объект модели по id
   function getModelById(modelId) {
-    return allModels.find(m => m.id === modelId);
+    return modelsList.find(m => m.id === modelId);
   }
 
   // Универсальная функция формирования тела запроса для VseGPT
   function buildVseGptRequest({ modelId, input, messages, settings, attachedFile }) {
-    const model = getModelById(modelId);
-    if (!model) {
-      return { error: true, message: 'Модель не найдена в списке поддерживаемых.' };
-    }
-
-    // Для моделей-изображений (image)
-    if (model.type === 'image') {
-      return {
-        fetchOptions: {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${VSEGPT_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: modelId,
-            prompt: input,
-            n: 1,
-            size: '1024x1024'
-          })
+    return {
+      fetchOptions: {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        endpoint: model.endpoint,
-        isFile: false
-      };
-    }
-
-    // Для vision/документных моделей (пример: gpt-4o, vision, multimodal)
-    if (model.type === 'vision' || model.type === 'document') {
-      if (attachedFile && attachedFile.type.startsWith('image/')) {
-        const formData = new FormData();
-        formData.append('model', modelId);
-        formData.append('messages', JSON.stringify([
-          ...messages,
-          { role: 'user', content: input }
-        ]));
-        formData.append('file', attachedFile);
-        return {
-          fetchOptions: {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${VSEGPT_API_KEY}`
-            },
-            body: formData
-          },
-          endpoint: model.endpoint,
-          isFile: true
-        };
-      } else {
-        return {
-          fetchOptions: {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${VSEGPT_API_KEY}`
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: [
-                ...messages,
-                { role: 'user', content: input }
-              ]
-            })
-          },
-          endpoint: model.endpoint,
-          isFile: false
-        };
-      }
-    }
-
-    // Для обычных текстовых моделей
-    if (model.type === 'text') {
-      // Универсальный фильтр параметров по модели
-      const params = {
-        model: modelId,
-        messages: [
-          ...messages,
-          { role: 'user', content: input }
-        ],
-        temperature: settings.temperature,
-        top_p: settings.topP,
-        max_tokens: settings.maxTokens,
-        frequency_penalty: settings.frequencyPenalty,
-        presence_penalty: settings.presencePenalty,
-        top_k: 30,
-        min_p: 0.03,
-        prompt: input,
-        n: 1,
-        size: '1024x1024',
-        steps: 30,
-        width: 1024,
-        height: 1024
-      };
-      const allowed = model.params || [];
-      const filtered = {};
-      for (const key of allowed) {
-        if (params[key] !== undefined) filtered[key] = params[key];
-      }
-      return {
-        fetchOptions: {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${VSEGPT_API_KEY}`
-          },
-          body: JSON.stringify(filtered)
-        },
-        endpoint: model.endpoint,
-        isFile: false
-      };
-    }
-
-    // Если тип не поддерживается
-    return { error: true, message: 'Данная модель не поддерживает выбранный тип задачи.' };
+        body: JSON.stringify({
+          message: input,
+          settings: settings
+        })
+      },
+      endpoint: `/api/chat/${modelId}`,
+      isFile: false
+    };
   }
 
   // Автоматическая коррекция параметров при ошибках 400
@@ -396,7 +299,7 @@ export default function Chat() {
     let usedParams = null;
     let autoFixLog = [];
     let params = null;
-    let endpoint = '/v1/chat/completions';
+    let endpoint = `/api/chat/${modelId}`;
     while (attempt < maxRetries) {
       try {
         const req = buildVseGptRequest({ modelId, input, messages, settings, attachedFile });
@@ -410,7 +313,8 @@ export default function Chat() {
         if (!isFile) {
           params = JSON.parse(fetchOptions.body);
         }
-        const response = await fetch(`https://api.vsegpt.ru${endpoint}`, fetchOptions);
+        // Меняем адрес на свой backend
+        const response = await fetch(endpoint, fetchOptions);
         lastResponse = response;
         if (response.ok) return response;
         if (response.status === 400) {
@@ -423,14 +327,14 @@ export default function Chat() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${VSEGPT_API_KEY}`
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
               },
               body: JSON.stringify(fix.params)
             };
             lastBody = fixedOptions.body;
             usedParams = fixedOptions;
             params = fix.params;
-            const retryResp = await fetch(`https://api.vsegpt.ru${endpoint}`, fixedOptions);
+            const retryResp = await fetch(endpoint, fixedOptions);
             if (retryResp.ok) {
               autoFixLog.push('Автоисправление успешно!');
               retryResp.autoFixLog = autoFixLog;
@@ -466,6 +370,7 @@ export default function Chat() {
     console.log('input:', input);
     console.log('attachedFile:', attachedFile);
     console.log('currentConversationId:', currentConversationId);
+    console.log('Модель, в которую отправляется запрос:', selectedModelId);
     
     if ((!input.trim() && !attachedFile) || !currentConversationId) return;
 
@@ -598,6 +503,9 @@ export default function Chat() {
         if (contentType.includes('application/json')) {
           data = await response.json();
           let content = '';
+          let modelFromResponse = null;
+          if (data.model) modelFromResponse = data.model;
+          if (data.choices && data.choices[0] && data.choices[0].model) modelFromResponse = data.choices[0].model;
           if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
             content = data.choices[0].message.content;
           } else if (data.response) {
@@ -607,15 +515,19 @@ export default function Chat() {
           }
           if (!content) content = 'Нет ответа от модели.';
           data = { response: content };
+          console.log('Модель, от которой пришёл ответ:', modelFromResponse || modelId);
         } else if (contentType.startsWith('image/')) {
           const blob = await response.blob();
           data = { response: `<img src="${URL.createObjectURL(blob)}" alt="image" />` };
+          console.log('Модель, от которой пришёл ответ (image):', modelId);
         } else if (contentType.startsWith('video/')) {
           const blob = await response.blob();
           data = { response: `<video controls src="${URL.createObjectURL(blob)}" style="max-width:100%"></video>` };
+          console.log('Модель, от которой пришёл ответ (video):', modelId);
         } else {
           data = { response: await response.text() };
           if (!data.response) data.response = 'Нет ответа от модели.';
+          console.log('Модель, от которой пришёл ответ (text):', modelId);
         }
         const botMessage = {
           role: "assistant",
@@ -662,7 +574,7 @@ export default function Chat() {
       return modelIdMap[model];
     }
     // Fallback — первая модель
-    return allModels[0].id;
+    return modelsList[0].id;
   };
   
   const [selectedModelId, setSelectedModelId] = useState(getInitialModelId());
@@ -670,8 +582,66 @@ export default function Chat() {
     setSelectedModelId(getInitialModelId()); 
   }, [model]);
 
+  // Исправление 1: selectedModelId всегда берём из текущего диалога
+  useEffect(() => {
+    if (currentConversationId) {
+      const conv = conversations.find(c => c.id === currentConversationId);
+      if (conv && conv.model) {
+        setSelectedModelId(conv.model);
+        return;
+      }
+    }
+    setSelectedModelId(getInitialModelId());
+  }, [currentConversationId, conversations, model]);
+
+  // Исправление 2: сохраняем диалог в БД при уходе со страницы/размонтаже
+  useEffect(() => {
+    const saveDialog = async () => {
+      const conv = conversations.find(c => c.id === currentConversationId);
+      if (conv && conv.messages && conv.messages.length > 0) {
+        try {
+          await fetch('/api/save-dialog', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              dialogId: conv.id,
+              model: conv.model,
+              title: conv.title,
+              messages: conv.messages
+            })
+          });
+        } catch (e) { /* ignore */ }
+      }
+    };
+    const handleBeforeUnload = (e) => {
+      saveDialog();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      saveDialog();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  // eslint-disable-next-line
+  }, [currentConversationId, conversations]);
+
   const fileSupport = modelsWithFileSupport.includes(selectedModelId);
   const [fileError, setFileError] = useState("");
+
+  function isImageUrl(url) {
+    if (typeof url !== 'string' || !url.startsWith('http')) return false;
+    // Проверяем расширение или mime-type в ссылке или query
+    const lower = url.toLowerCase();
+    return (
+      /\.(png|jpg|jpeg|gif)(\?|$)/.test(lower) ||
+      lower.includes('image/png') ||
+      lower.includes('image/jpeg') ||
+      lower.includes('image/jpg') ||
+      lower.includes('image/gif')
+    );
+  }
 
   return (
     <>
@@ -803,8 +773,9 @@ export default function Chat() {
                   </IconButton>
                 </Typography>
               )}
+              {/* В заголовке чата вместо Select возвращаю Chip: */}
               <Chip 
-                label={allModels.find(m => m.id === selectedModelId)?.name || selectedModelId} 
+                label={modelsList.find(m => m.id === selectedModelId)?.name || selectedModelId} 
                 size="small" 
                 sx={{ ml: 2 }}
                 color="primary"
@@ -844,7 +815,11 @@ export default function Chat() {
                   {message.role === 'assistant' ? (
                     <Box>
                       {typeof message.content === 'string' ? (
-                        <ReactMarkdown>{message.content || ''}</ReactMarkdown>
+                        isImageUrl(message.content) ? (
+                          <img src={message.content} alt="Ответ ассистента (изображение)" style={{maxWidth: '400px', borderRadius: '8px'}} />
+                        ) : (
+                          <ReactMarkdown>{message.content || ''}</ReactMarkdown>
+                        )
                       ) : (
                         message.content
                       )}

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem, ListSubheader, Button, Chip } from "@mui/material";
 import NavBar from "../components/NavBar";
-import { allModels } from './models';
+import { modelsList } from './modelsList';
 
 export default function Main() {
   const navigate = useNavigate();
@@ -23,7 +23,7 @@ export default function Main() {
       <NavBar />
       <Box sx={{ p: 3, maxWidth: 600, mx: "auto" }}>
         <Typography variant="h4" gutterBottom>
-          VseGPT — универсальный чат с поддержкой популярных LLM
+          Felix AI
         </Typography>
         <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
@@ -39,9 +39,9 @@ export default function Main() {
               sx={{ minWidth: 320 }}
               MenuProps={{ PaperProps: { style: { maxHeight: 400 } } }}
             >
-              {Array.from(new Set(allModels.map(m => m.group))).flatMap(group => [
+              {Array.from(new Set(modelsList.map(m => m.group))).flatMap(group => [
                 <ListSubheader key={group}>{group}</ListSubheader>,
-                ...allModels.filter(m => m.group === group).map(m => (
+                ...modelsList.filter(m => m.group === group).map(m => (
                   <MenuItem key={m.id} value={m.id}>
                     {m.name}
                   </MenuItem>

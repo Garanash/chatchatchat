@@ -137,12 +137,54 @@ export default function Chat() {
       navigate("/login");
       return;
     }
-    
-    // Создаем первую беседу при загрузке
-    if (conversations.length === 0) {
-      createNewConversation();
-    }
-  }, [navigate]);
+
+    // Загрузка истории диалогов из БД
+    const loadDialogsFromDB = async () => {
+      try {
+        const dialogsResp = await fetch("/dialogs", {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!dialogsResp.ok) throw new Error("Ошибка загрузки диалогов");
+        const dialogs = await dialogsResp.json();
+        if (!dialogs || dialogs.length === 0) {
+          createNewConversation();
+          return;
+        }
+        // Для каждого диалога загружаем сообщения
+        const dialogsWithMessages = await Promise.all(dialogs.map(async (d) => {
+          const msgsResp = await fetch(`/dialogs/${d.id}/messages`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          let messages = [];
+          if (msgsResp.ok) {
+            messages = await msgsResp.json();
+          }
+          return {
+            id: d.id,
+            title: d.title || `Диалог ${d.id}`,
+            model: d.model || model, // если есть поле model, иначе текущий
+            messages: messages.map(m => ({ ...m, id: m.id || uuidv4() }))
+          };
+        }));
+        // --- Ищем диалог для выбранной модели ---
+        const found = dialogsWithMessages.find(d => d.model === model);
+        if (found) {
+          setConversations(dialogsWithMessages);
+          setCurrentConversationId(found.id);
+          setMessages(found.messages);
+          setSelectedModelId(found.model);
+        } else {
+          // Нет диалога для этой модели — создаём новый
+          setConversations(dialogsWithMessages);
+          createNewConversation();
+        }
+      } catch (e) {
+        createNewConversation();
+      }
+    };
+    loadDialogsFromDB();
+    // eslint-disable-next-line
+  }, [navigate, model]);
 
   // При создании нового диалога:
   const createNewConversation = () => {
@@ -255,7 +297,7 @@ export default function Chat() {
           settings: settings
         })
       },
-      endpoint: `/api/chat/${modelId}`,
+      endpoint: `/chat/${modelId}`,
       isFile: false
     };
   }
@@ -299,7 +341,7 @@ export default function Chat() {
     let usedParams = null;
     let autoFixLog = [];
     let params = null;
-    let endpoint = `/api/chat/${modelId}`;
+    let endpoint = `/chat/${modelId}`;
     while (attempt < maxRetries) {
       try {
         const req = buildVseGptRequest({ modelId, input, messages, settings, attachedFile });

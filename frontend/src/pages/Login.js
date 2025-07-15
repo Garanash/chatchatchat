@@ -28,13 +28,17 @@ export default function Login() {
     e.preventDefault();
     setError("");
     try {
-      const res = await axios.post("/api/token", new URLSearchParams({ username, password }), {
+      const res = await axios.post("/token", new URLSearchParams({ username, password }), {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
       localStorage.setItem("token", res.data.access_token);
       navigate("/");
     } catch (err) {
-      setError("Неверный логин или пароль");
+      if (err.response && err.response.data && err.response.data.detail) {
+        setError(err.response.data.detail);
+      } else {
+        setError("Неверный логин или пароль");
+      }
     }
   };
 

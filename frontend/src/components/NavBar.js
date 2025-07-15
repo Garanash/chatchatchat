@@ -22,7 +22,6 @@ export default function NavBar() {
         </Box>
         <Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
           <Button color="inherit" onClick={() => navigate("/")} sx={{ color: '#ffffff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' } }}>Главная</Button>
-          <Button color="inherit" onClick={() => navigate("/settings")} sx={{ color: '#ffffff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' } }}>Настройки</Button>
           <Button color="inherit" onClick={handleLogout} sx={{ color: '#ffffff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' } }}>Выйти</Button>
         </Box>
       </Toolbar>

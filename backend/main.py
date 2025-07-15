@@ -15,6 +15,7 @@ import os
 from datetime import datetime
 import requests
 import logging
+import uuid
 
 # Конфиг
 SECRET_KEY = "supersecretkey"
@@ -39,15 +40,16 @@ class User(Base):
 
 class Dialog(Base):
     __tablename__ = "dialogs"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+    model = Column(String, index=True)  # Новое поле для идентификатора модели
     title = Column(String, default="Новый диалог")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True, index=True)
-    dialog_id = Column(Integer, ForeignKey("dialogs.id"))
+    dialog_id = Column(String, ForeignKey("dialogs.id"))  # Исправлено: теперь String
     role = Column(String)  # "user" или "assistant"
     content = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
@@ -399,10 +401,10 @@ def chat_with_model(model_name: str, chat_data: ChatMessage = Body(...), current
 def get_dialogs(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     dialogs = db.query(Dialog).filter_by(user_id=current_user.id).all()
-    return [{"id": d.id, "title": d.title, "created_at": d.created_at} for d in dialogs]
+    return [{"id": d.id, "title": d.title, "model": d.model, "created_at": d.created_at} for d in dialogs]
 
 @app.get("/dialogs/{dialog_id}/messages")
-def get_dialog_messages(dialog_id: int, current_user: User = Depends(get_current_user)):
+def get_dialog_messages(dialog_id: str, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     dialog = db.query(Dialog).filter_by(id=dialog_id, user_id=current_user.id).first()
     if not dialog:
@@ -464,13 +466,15 @@ def save_dialog(data: dict = Body(...), current_user: User = Depends(get_current
     # Найти или создать диалог
     dialog = db.query(Dialog).filter_by(id=dialog_id, user_id=current_user.id).first()
     if not dialog:
-        dialog = Dialog(id=dialog_id, user_id=current_user.id, title=title or "Диалог", )
+        dialog = Dialog(id=dialog_id, user_id=current_user.id, model=model, title=title or "Диалог", )
         db.add(dialog)
         db.commit()
         db.refresh(dialog)
     else:
         if title:
             dialog.title = title
+        if model:
+            dialog.model = model
         db.commit()
     # Сохраняем сообщения (удаляем старые, если есть)
     db.query(Message).filter_by(dialog_id=dialog.id).delete()
@@ -478,6 +482,14 @@ def save_dialog(data: dict = Body(...), current_user: User = Depends(get_current
         db.add(Message(dialog_id=dialog.id, role=m.get("role"), content=m.get("content"), timestamp=m.get("timestamp")))
     db.commit()
     return {"success": True, "dialog_id": dialog.id}
+
+@app.get("/api/users")
+def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(lambda: SessionLocal())):
+    # Только для администратора (username == 'admin')
+    if current_user.username != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администратора")
+    users = db.query(User).all()
+    return [{"id": u.id, "username": u.username} for u in users]
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 

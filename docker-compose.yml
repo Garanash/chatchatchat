@@ -28,7 +28,7 @@ services:
     networks:
       - db-network
     build: ./backend
-    command: bash -c "alembic upgrade head && python3 main.py"
+    command: python3 main.py
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,7 +47,7 @@ services:
       - db-network
     build: ./frontend
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
 

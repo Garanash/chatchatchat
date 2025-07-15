@@ -492,4 +492,15 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
     return [{"id": u.id, "username": u.username} for u in users]
 
 if __name__ == "__main__":
+    # --- Автоматическое создание пользователей при первом запуске ---
+    db = SessionLocal()
+    def ensure_user(username, password):
+        if not get_user(db, username):
+            hashed_password = get_password_hash(password)
+            db_user = User(username=username, hashed_password=hashed_password)
+            db.add(db_user)
+            db.commit()
+    ensure_user("otrubyannikovif", "ceoagb")
+    ensure_user("admin", "admin")
+    db.close()
     uvicorn.run(app, host="0.0.0.0", port=8000) 

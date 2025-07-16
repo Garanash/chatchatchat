@@ -4,8 +4,10 @@
 export const modelsList = [
   { name: 'Grok 4', id: 'x-ai/grok-4' },
   { name: 'GPT-4o', id: 'openai/gpt-4o-2024-11-20-online-hq' },
-  { name: 'GPT-4.5 (Preview)', id: 'openai/gpt-4.5-preview' },
-  { name: 'Llama 3', id: 'meta-llama/llama-4-maverick-1m-ctx' },
+  { name: 'GPT-4.5 (Preview)', id: 'openai/gpt-4.5-preview' , hidden: true },
+  { name: 'Llama 4', id: 'meta-llama/llama-4-maverick-1m-ctx' },
+  { name: 'Google: Gemini 2.5 Pro', id: 'vis-google/gemini-2.5-pro' },
+  { name: 'MoonshotAI: Kimi K2 1T', id: 'moonshotai/kimi-k2' },
   { name: 'DALL-E 3', id: 'openai/dall-e-3' },
   { name: 'DeepSeek V3', id: 'deepseek/deepseek-chat-0324-alt-fast', hidden: true },
   { name: 'GPT-4.1', id: 'openai/gpt-4-1', hidden: true },

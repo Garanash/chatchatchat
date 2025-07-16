@@ -94,7 +94,8 @@ export default function Main() {
             boxShadow: 6,
             borderRadius: 4,
           }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              <img src="https://img.icons8.com/color/48/mountain.png" alt="mountain" style={{ height: 40, marginRight: 10 }} />
               Выбрать LLM для чата
             </Typography>
             <FormControl fullWidth sx={{ mb: 2, width: '80%' }}>

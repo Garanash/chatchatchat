@@ -66,7 +66,6 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
-  const [attachedFile, setAttachedFile] = useState(null);
 
   // Новый актуальный список моделей VseGPT (июнь 2024)
   const allModels = [
@@ -112,15 +111,6 @@ export default function Chat() {
     { name: 'Cohere Command R+', id: 'cohere/command-r-plus', group: 'Cohere', badges: ['2024', 'Общие задачи', 'tools'] },
     // Яндекс
     { name: 'YandexGPT 3', id: 'yandex/yandexgpt-3', group: 'Yandex', badges: ['2024', 'Общие задачи', 'tools'] },
-  ];
-
-  // Модели, поддерживающие отправку файлов (пример: vision, multimodal)
-  const modelsWithFileSupport = [
-    'google/gemini-pro-vision',
-    'openai/gpt-4-vision-preview',
-    'openai/gpt-4o',
-    'midjourney', // Midjourney может поддерживать референсные изображения
-    // Добавьте сюда id моделей, которые реально поддерживают файлы по документации VseGPT
   ];
 
   const scrollToBottom = () => {
@@ -410,23 +400,15 @@ export default function Chat() {
   const sendMessage = async () => {
     console.log('=== НАЧАЛО sendMessage ===');
     console.log('input:', input);
-    console.log('attachedFile:', attachedFile);
     console.log('currentConversationId:', currentConversationId);
     console.log('Модель, в которую отправляется запрос:', selectedModelId);
     
-    if ((!input.trim() && !attachedFile) || !currentConversationId) return;
+    if (!input.trim() || !currentConversationId) return;
 
     let userMessage = { role: "user", content: input, timestamp: new Date(), id: uuidv4() };
-    if (attachedFile) {
-      userMessage.file = {
-        name: attachedFile.name,
-        url: URL.createObjectURL(attachedFile)
-      };
-    }
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
-    setAttachedFile(null);
     setIsLoading(true);
 
     setConversations(prev =>
@@ -445,7 +427,7 @@ export default function Chat() {
         input,
         messages: messages.filter(m => m.content && m.content.trim() && !m.content.includes('Ошибка')).map(m => ({ role: m.role, content: m.content })),
         settings,
-        attachedFile
+        attachedFile: null // Удаляем attachedFile
       });
       if (response.error) {
         let userMessage = 'Ошибка при обращении к модели.';
@@ -669,7 +651,7 @@ export default function Chat() {
   // eslint-disable-next-line
   }, [currentConversationId, conversations]);
 
-  const fileSupport = modelsWithFileSupport.includes(selectedModelId);
+  const fileSupport = false; // Удаляем поддержку файлов
   const [fileError, setFileError] = useState("");
 
   function isImageUrl(url) {
@@ -903,22 +885,6 @@ export default function Chat() {
           {/* Поле ввода */}
           <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Tooltip title={fileSupport ? "Прикрепить файл" : "Данная модель не поддерживает файлы"}>
-                <span>
-                  <IconButton component="label" disabled={!fileSupport}>
-                    <AttachFileIcon />
-                    <input
-                      type="file"
-                      hidden
-                      onChange={e => {
-                        if (e.target.files && e.target.files[0]) {
-                          setAttachedFile(e.target.files[0]);
-                        }
-                      }}
-                    />
-                  </IconButton>
-                </span>
-              </Tooltip>
               <TextField
                 fullWidth
                 multiline
@@ -942,19 +908,12 @@ export default function Chat() {
                   console.log('=== КНОПКА ОТПРАВКИ НАЖАТА ===');
                   sendMessage();
                 }}
-                disabled={(!input.trim() && !attachedFile) || isLoading}
+                disabled={(!input.trim()) || isLoading}
                 sx={{ minWidth: 56 }}
               >
                 <Send />
               </Button>
             </Box>
-            {attachedFile && (
-              <Box sx={{ mt: 1, mb: -1, ml: 1 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Файл: {attachedFile.name}
-                </Typography>
-              </Box>
-            )}
           </Box>
         </Box>
       </Box>

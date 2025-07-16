@@ -27,9 +27,21 @@ VSEGPT_API_URL = "https://api.vsegpt.ru/v1/chat/completions"
 VSEGPT_API_KEY = os.getenv("VSEGPT_API_KEY", "sk-...your-key-here...")
 
 # БД
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,         # увеличить размер пула
+    max_overflow=40,      # увеличить запас "оверфлоу"
+    pool_timeout=30,      # таймаут ожидания соединения
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 class User(Base):
     __tablename__ = "users"
@@ -103,7 +115,7 @@ def authenticate_user(db: Session, username: str, password: str):
         return False
     return user
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(lambda: SessionLocal())):
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -293,8 +305,7 @@ def get_dialog_summary(messages, max_len=500):
 app = FastAPI()
 
 @app.post("/register", response_model=Token)
-def register(user: UserCreate):
-    db = SessionLocal()
+def register(user: UserCreate, db: Session = Depends(get_db)):
     if get_user(db, user.username):
         raise HTTPException(status_code=400, detail="Пользователь уже существует")
     hashed_password = get_password_hash(user.password)
@@ -306,8 +317,7 @@ def register(user: UserCreate):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    db = SessionLocal()
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Неверный логин или пароль")
@@ -328,9 +338,8 @@ def get_api_keys(current_user: User = Depends(get_current_user)):
     return {"keys": keys}
 
 @app.post("/api-keys", response_model=APIKeys)
-def set_api_keys(keys: APIKeys, current_user: User = Depends(get_current_user)):
+def set_api_keys(keys: APIKeys, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     import json
-    db = SessionLocal()
     user = get_user(db, current_user.username)
     user.api_keys = json.dumps(keys.keys)
     db.commit()
@@ -342,9 +351,8 @@ def get_models(current_user: User = Depends(get_current_user)):
     return {"models": [f"LLM_{i+1}" for i in range(16)]}
 
 @app.post("/chat/{model_name:path}")
-def chat_with_model(model_name: str, chat_data: ChatMessage = Body(...), current_user: User = Depends(get_current_user)):
+def chat_with_model(model_name: str, chat_data: ChatMessage = Body(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     logging.info(f"[chat_with_model] model_name: {model_name}")
-    db = SessionLocal()
     # 1. Найти или создать диалог для пользователя (по id или создаём новый)
     dialog = db.query(Dialog).filter_by(user_id=current_user.id).order_by(Dialog.created_at.desc()).first()
     if not dialog:
@@ -398,14 +406,12 @@ def chat_with_model(model_name: str, chat_data: ChatMessage = Body(...), current
     }
 
 @app.get("/dialogs")
-def get_dialogs(current_user: User = Depends(get_current_user)):
-    db = SessionLocal()
+def get_dialogs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     dialogs = db.query(Dialog).filter_by(user_id=current_user.id).all()
     return [{"id": d.id, "title": d.title, "model": d.model, "created_at": d.created_at} for d in dialogs]
 
 @app.get("/dialogs/{dialog_id}/messages")
-def get_dialog_messages(dialog_id: str, current_user: User = Depends(get_current_user)):
-    db = SessionLocal()
+def get_dialog_messages(dialog_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     dialog = db.query(Dialog).filter_by(id=dialog_id, user_id=current_user.id).first()
     if not dialog:
         raise HTTPException(404, "Диалог не найден")
@@ -457,8 +463,7 @@ def apply_backend_fixes(fixes_data: BackendFixes, current_user: User = Depends(g
 
 # --- API для сохранения диалога и сообщений ---
 @app.post("/api/save-dialog")
-def save_dialog(data: dict = Body(...), current_user: User = Depends(get_current_user)):
-    db = SessionLocal()
+def save_dialog(data: dict = Body(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     dialog_id = data.get("dialogId")
     model = data.get("model")
     title = data.get("title")
@@ -484,7 +489,7 @@ def save_dialog(data: dict = Body(...), current_user: User = Depends(get_current
     return {"success": True, "dialog_id": dialog.id}
 
 @app.get("/api/users")
-def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(lambda: SessionLocal())):
+def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Только для администратора (username == 'admin')
     if current_user.username != 'admin':
         raise HTTPException(status_code=403, detail="Только для администратора")

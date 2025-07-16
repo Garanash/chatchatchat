@@ -95,7 +95,7 @@ export default function Main() {
             borderRadius: 4,
           }}>
             <Typography variant="h6" gutterBottom>
-              Выберите модель для чата
+              Выбрать LLM для чата
             </Typography>
             <FormControl fullWidth sx={{ mb: 2, width: '80%' }}>
               <InputLabel id="model-select-label">Модель</InputLabel>
@@ -107,14 +107,11 @@ export default function Main() {
                 sx={{ minWidth: 320, background: 'rgba(255,255,255,0.5)', borderRadius: 2 }}
                 MenuProps={{ PaperProps: { style: { maxHeight: 400, background: 'rgba(255,255,255,0.9)' } } }}
               >
-                {Array.from(new Set(modelsList.map(m => m.group))).flatMap(group => [
-                  <ListSubheader key={group}>{group}</ListSubheader>,
-                  ...modelsList.filter(m => m.group === group).map(m => (
-                    <MenuItem key={m.id} value={m.id}>
-                      {m.name}
-                    </MenuItem>
-                  ))
-                ])}
+                {modelsList.filter(m => !m.hidden).map(m => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.name}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <Button
@@ -131,6 +128,9 @@ export default function Main() {
             >
               Перейти к чату
             </Button>
+            <Typography variant="body2" sx={{ mt: 2, color: 'gray', fontSize: 13, textAlign: 'center' }}>
+              Мы можем добавить любые LLM с сайта vsegpt. Список всех моделей: <a href="https://vsegpt.ru/Docs/ModelsNew" target="_blank" rel="noopener noreferrer">https://vsegpt.ru/Docs/ModelsNew</a>
+            </Typography>
           </Paper>
         </Box>
       </Box>

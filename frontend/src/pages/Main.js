@@ -4,6 +4,11 @@ import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem, List
 import NavBar from "../components/NavBar";
 import { modelsList } from './modelsList';
 
+// Функция для форматирования описания с переносами строк
+function formatDescription(desc) {
+  return desc.replace(/([.!?])\s+/g, '$1\n');
+}
+
 export default function Main() {
   const navigate = useNavigate();
   const [selectedModel, setSelectedModel] = useState("");
@@ -110,7 +115,14 @@ export default function Main() {
               >
                 {modelsList.filter(m => !m.hidden).map(m => (
                   <MenuItem key={m.id} value={m.id}>
-                    {m.name}
+                    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 420 }}>
+                      <span style={{ fontWeight: 500 }}>{m.name}</span>
+                      {m.description && (
+                        <span style={{ fontSize: 13, color: '#666', marginTop: 2, lineHeight: 1.3, whiteSpace: 'pre-line' }}>
+                          {formatDescription(m.description)}
+                        </span>
+                      )}
+                    </div>
                   </MenuItem>
                 ))}
               </Select>

@@ -87,30 +87,30 @@ export default function Main() {
           overflow: 'hidden',
         }}>
           <Paper sx={{
-            p: 3,
+            p: { xs: 2, sm: 3 },
             mb: 3,
-            width: '80vw',
+            width: { xs: '98vw', sm: '80vw' },
             maxWidth: 900,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            background: 'rgba(255,255,255,0.7)',
-            backdropFilter: 'blur(8px)',
-            boxShadow: 6,
-            borderRadius: 4,
+            background: 'rgba(255,255,255,0.92)',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)',
+            borderRadius: 5,
           }}>
-            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', fontSize: { xs: 20, sm: 24 } }}>
               <img src="https://img.icons8.com/color/48/mountain.png" alt="mountain" style={{ height: 40, marginRight: 10 }} />
               Выбрать LLM для чата
             </Typography>
-            <FormControl fullWidth sx={{ mb: 2, width: '80%' }}>
+            <FormControl fullWidth sx={{ mb: 2, width: { xs: '100%', sm: '80%' } }}>
               <InputLabel id="model-select-label">Модель</InputLabel>
               <Select
                 labelId="model-select-label"
                 value={selectedModel}
                 label="Модель"
                 onChange={handleModelChange}
-                sx={{ minWidth: 320, background: 'rgba(255,255,255,0.5)', borderRadius: 2 }}
+                sx={{ minWidth: { xs: 0, sm: 320 }, background: 'rgba(255,255,255,0.5)', borderRadius: 2, fontSize: { xs: 16, sm: 18 } }}
                 MenuProps={{ PaperProps: { style: { maxHeight: 400, background: 'rgba(255,255,255,0.9)' } } }}
               >
                 {modelsList.filter(m => !m.hidden).map(m => (
@@ -137,11 +137,11 @@ export default function Main() {
                 handleGoToChat();
                 setSelectedModel("");
               }}
-              sx={{ mt: 2, width: '80%' }}
+              sx={{ mt: 2, width: { xs: '100%', sm: '80%' }, fontSize: { xs: '1.1rem', sm: '1.2rem' }, p: { xs: '12px 0', sm: '14px 0' }, borderRadius: 3, boxShadow: 3 }}
             >
               Перейти к чату
             </Button>
-            <Typography variant="body2" sx={{ mt: 2, color: 'gray', fontSize: 13, textAlign: 'center' }}>
+            <Typography variant="body2" sx={{ mt: 2, color: 'gray', fontSize: { xs: 12, sm: 13 }, textAlign: 'center' }}>
               Мы можем добавить любые LLM с сайта vsegpt. Список всех моделей: <a href="https://vsegpt.ru/Docs/ModelsNew" target="_blank" rel="noopener noreferrer">https://vsegpt.ru/Docs/ModelsNew</a>
             </Typography>
           </Paper>

@@ -670,30 +670,37 @@ export default function Chat() {
   return (
     <>
       <NavBar />
-      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
+      <Box className="chat-main" sx={{ display: 'flex', flexDirection: 'row-reverse', height: 'calc(100vh - 64px)', background: { xs: '#f0f4fa', sm: 'none' } }}>
         {/* Кнопка открытия боковой панели */}
         {!sidebarOpen && (
-          <IconButton onClick={() => setSidebarOpen(true)} sx={{ position: 'absolute', left: 8, top: 80, zIndex: 1301 }}>
-            <MenuIcon />
+          <IconButton onClick={() => setSidebarOpen(true)} sx={{ position: { xs: 'fixed', sm: 'absolute' }, right: 8, top: 80, zIndex: 1301, background: '#fff', boxShadow: 2, borderRadius: 2 }}>
+            <MenuIcon fontSize="large" />
           </IconButton>
         )}
         {/* Боковая панель с диалогами */}
         <Drawer
-          variant="persistent"
+          anchor="right"
+          variant="temporary"
           open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          ModalProps={{ keepMounted: true }}
           sx={{
-            width: 300,
+            width: { xs: '90vw', sm: 300 },
             flexShrink: 0,
             '& .MuiDrawer-paper': {
-              width: 300,
+              width: { xs: '90vw', sm: 300 },
               boxSizing: 'border-box',
               backgroundColor: '#f5f5f5',
               transition: 'width 0.3s',
+              borderTopLeftRadius: { xs: 16, sm: 0 },
+              borderBottomLeftRadius: { xs: 16, sm: 0 },
+              boxShadow: { xs: 8, sm: 2 },
             },
+            display: { xs: sidebarOpen ? 'block' : 'none', sm: 'block' }
           }}
         >
           <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: 20, sm: 22 } }}>
               Диалоги
             </Typography>
             <IconButton onClick={() => setSidebarOpen(false)}>
@@ -705,7 +712,7 @@ export default function Chat() {
             startIcon={<Add />}
             onClick={createNewConversation}
             fullWidth
-            sx={{ mb: 2, mx: 2 }}
+            sx={{ mb: 2, mx: 2, fontSize: { xs: '1.1rem', sm: '1.2rem' }, p: { xs: '10px 0', sm: '12px 0' }, borderRadius: 3, boxShadow: 2 }}
           >
             Новый диалог
           </Button>
@@ -718,13 +725,23 @@ export default function Chat() {
                 sx={{
                   cursor: 'pointer',
                   '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' },
-                  '&.Mui-selected': { backgroundColor: 'rgba(25,118,210,0.08)' }
+                  '&.Mui-selected': { backgroundColor: 'rgba(25,118,210,0.18)', fontWeight: 'bold', borderLeft: '4px solid #1976d2' },
+                  fontSize: { xs: '1rem', sm: '1.1rem' },
+                  borderRadius: 2,
+                  mb: 1,
+                  mx: 1,
+                  transition: 'background 0.2s',
                 }}
-                onClick={() => selectConversation(conversation.id)}
+                onClick={() => {
+                  selectConversation(conversation.id);
+                  if (window.innerWidth < 600) setSidebarOpen(false);
+                }}
               >
                 <ListItemText
                   primary={conversation.title}
                   secondary={`${conversation.messages.length} сообщений`}
+                  primaryTypographyProps={{ fontWeight: currentConversationId === conversation.id ? 700 : 500, fontSize: { xs: 16, sm: 17 } }}
+                  secondaryTypographyProps={{ fontSize: { xs: 13, sm: 14 }, color: '#888' }}
                 />
                 <IconButton
                   size="small"
@@ -745,16 +762,24 @@ export default function Chat() {
           flex: 1, 
           display: 'flex', 
           flexDirection: 'column',
-          width: '100%'
+          width: '100%',
+          minWidth: 0,
+          background: { xs: '#f0f4fa', sm: '#fafafa' },
+          borderRadius: { xs: 4, sm: 0 },
+          boxShadow: { xs: 4, sm: 0 },
         }}>
           {/* Заголовок чата */}
           <Box sx={{ 
-            p: 2, 
+            p: { xs: 1, sm: 2 }, 
             borderBottom: 1, 
             borderColor: 'divider',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            background: '#fff',
+            borderTopLeftRadius: { xs: 4, sm: 0 },
+            borderTopRightRadius: { xs: 4, sm: 0 },
+            boxShadow: { xs: 2, sm: 0 },
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <IconButton onClick={() => navigate("/")} sx={{ mr: 1 }}>
@@ -779,11 +804,11 @@ export default function Chat() {
                     }
                   }}
                   size="small"
-                  sx={{ mr: 1, width: 200 }}
+                  sx={{ mr: 1, width: { xs: 120, sm: 200 }, fontSize: { xs: 16, sm: 18 } }}
                   autoFocus
                 />
               ) : (
-                <Typography variant="h6" sx={{ cursor: 'pointer' }} onClick={() => {
+                <Typography variant="h6" sx={{ cursor: 'pointer', fontSize: { xs: 18, sm: 22 }, fontWeight: 600 }} onClick={() => {
                   setIsEditingTitle(true);
                   setEditedTitle(currentConversation?.title || '');
                 }}>
@@ -797,11 +822,10 @@ export default function Chat() {
                   </IconButton>
                 </Typography>
               )}
-              {/* В заголовке чата вместо Select возвращаю Chip: */}
               <Chip 
                 label={modelsList.find(m => m.id === selectedModelId)?.name || selectedModelId} 
                 size="small" 
-                sx={{ ml: 2 }}
+                sx={{ ml: 2, fontSize: { xs: 13, sm: 15 }, height: { xs: 24, sm: 28 } }}
                 color="primary"
               />
             </Box>
@@ -814,8 +838,9 @@ export default function Chat() {
           <Box sx={{ 
             flex: 1, 
             overflow: 'auto', 
-            p: 2,
-            backgroundColor: '#fafafa'
+            p: { xs: 1, sm: 2 },
+            backgroundColor: 'transparent',
+            minHeight: 0
           }}>
             {messages.map((message, index) => (
               <Box
@@ -823,17 +848,22 @@ export default function Chat() {
                 sx={{
                   display: 'flex',
                   justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
-                  mb: 2
+                  mb: { xs: 1, sm: 2 },
+                  transition: 'all 0.2s',
                 }}
               >
                 <Paper
-                  elevation={1}
+                  elevation={3}
                   sx={{
-                    maxWidth: '70%',
-                    p: 2,
+                    maxWidth: { xs: '95vw', sm: '70%' },
+                    p: { xs: 1.5, sm: 2 },
                     backgroundColor: message.role === 'user' ? '#1976d2' : '#ffffff',
                     color: message.role === 'user' ? '#ffffff' : '#000000',
-                    borderRadius: 2
+                    borderRadius: 3,
+                    fontSize: { xs: '1rem', sm: '1.1rem' },
+                    boxShadow: '0 4px 16px 0 rgba(31, 38, 135, 0.10)',
+                    wordBreak: 'break-word',
+                    transition: 'all 0.2s',
                   }}
                 >
                   {message.role === 'assistant' ? (
@@ -883,8 +913,8 @@ export default function Chat() {
           </Box>
 
           {/* Поле ввода */}
-          <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', background: '#fff', borderBottomLeftRadius: { xs: 4, sm: 0 }, borderBottomRightRadius: { xs: 4, sm: 0 }, boxShadow: { xs: 2, sm: 0 } }}>
+            <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
               <TextField
                 fullWidth
                 multiline
@@ -892,24 +922,20 @@ export default function Chat() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  console.log('=== КЛАВИША НАЖАТА ===', e.key);
                   if (e.key === 'Enter' && !e.shiftKey) {
-                    console.log('=== ВЫЗЫВАЕМ sendMessage ===');
                     e.preventDefault();
                     sendMessage();
                   }
                 }}
                 placeholder="Введите сообщение..."
                 disabled={isLoading}
+                sx={{ fontSize: { xs: '1.1rem', sm: '1.2rem' }, borderRadius: 2, background: '#f7fafd', boxShadow: 1, p: 1 }}
               />
               <Button
                 variant="contained"
-                onClick={() => {
-                  console.log('=== КНОПКА ОТПРАВКИ НАЖАТА ===');
-                  sendMessage();
-                }}
+                onClick={sendMessage}
                 disabled={(!input.trim()) || isLoading}
-                sx={{ minWidth: 56 }}
+                sx={{ minWidth: { xs: 40, sm: 56 }, fontSize: { xs: '1.1rem', sm: '1.2rem' }, p: { xs: '12px 0', sm: '14px 0' }, borderRadius: 3, boxShadow: 3 }}
               >
                 <Send />
               </Button>

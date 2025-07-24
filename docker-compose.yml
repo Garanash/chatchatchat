@@ -18,8 +18,8 @@ services:
       retries: 5
     volumes:
       - ./pg-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     command: postgres -c shared_buffers=128MB -c max_connections=100
 
   backend:
@@ -37,8 +37,8 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=agb
       - VSEGPT_API_KEY=sk-or-vv-e9b7383136e05472c7716cadd20fa09cec299bc80ee8607165f8fd890a4bc194
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
 
   frontend:
     container_name: frontend
@@ -47,8 +47,11 @@ services:
     build: ./frontend
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - backend
+    volumes:
+      - ./ssl:/etc/nginx/ssl # Положи сертификаты fullchain.pem и privkey.pem в ./ssl
 
   # pgadmin (опционально)
   # pgadmin:
